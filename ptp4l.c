@@ -239,7 +239,7 @@ int main(int argc, char *argv[])
 	case CLOCK_TYPE_MANAGEMENT:
 		goto out;
 	}
-
+	/* 1.根据类型创建时钟 */
 	clock = clock_create(type, cfg, req_phc);
 	if (!clock) {
 		fprintf(stderr, "failed to create a clock\n");

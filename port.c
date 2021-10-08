@@ -1781,7 +1781,7 @@ int port_initialize(struct port *p)
 {
 	struct config *cfg = clock_config(p->clock);
 	int fd[N_TIMER_FDS], i;
-
+	/* 从配置文件读取字段值，并设置port相应属性 */
 	p->multiple_seq_pdr_count  = 0;
 	p->multiple_pdr_detected   = 0;
 	p->last_fault_type         = FT_UNSPECIFIED;
@@ -1821,6 +1821,7 @@ int port_initialize(struct port *p)
 	for (i = 0; i < N_TIMER_FDS; i++) {
 		fd[i] = -1;
 	}
+	/* 创建类型为CLOCK_MONOTONIC的时间fd,当时间变化时，可以通过fd读取 */
 	for (i = 0; i < N_TIMER_FDS; i++) {
 		fd[i] = timerfd_create(CLOCK_MONOTONIC, 0);
 		if (fd[i] < 0) {
@@ -1828,6 +1829,7 @@ int port_initialize(struct port *p)
 			goto no_timers;
 		}
 	}
+	/* 打开传输端口：调用raw_open() */
 	if (transport_open(p->trp, p->iface, &p->fda, p->timestamping))
 		goto no_tropen;
 
@@ -1841,7 +1843,8 @@ int port_initialize(struct port *p)
 	if (unicast_client_enabled(p) && unicast_client_set_tmo(p)) {
 		goto no_tmo;
 	}
-
+	/* 创建监听网卡link状态的netlink */
+	/* UDS：UDS(Unified diagnostic services)，一种诊断协议 */
 	/* No need to open rtnl socket on UDS port. */
 	if (transport_type(p->trp) != TRANS_UDS) {
 		/*
@@ -1852,12 +1855,12 @@ int port_initialize(struct port *p)
 		if (p->bmca == BMCA_NOOP) {
 			port_set_delay_tmo(p);
 		}
-		if (p->fda.fd[FD_RTNL] == -1) {
+		if (p->fda.fd[FD_RTNL] == -1) { /* 打开获取网卡状态的netlink */
 			p->fda.fd[FD_RTNL] = rtnl_open();
 		}
 		if (p->fda.fd[FD_RTNL] >= 0) {
 			const char *ifname = interface_name(p->iface);
-			rtnl_link_query(p->fda.fd[FD_RTNL], ifname);
+			rtnl_link_query(p->fda.fd[FD_RTNL], ifname); /* 发消息查询网卡状态 */
 		}
 	}
 
@@ -3099,7 +3102,7 @@ struct port *port_open(const char *phc_device,
 		       struct interface *interface,
 		       struct clock *clock)
 {
-	enum clock_type type = clock_type(clock);
+	enum clock_type type = clock_type(clock); /* 获取时钟类型 */
 	struct config *cfg = clock_config(clock);
 	struct port *p = malloc(sizeof(*p));
 	enum transport_type transport;
@@ -3122,7 +3125,7 @@ struct port *port_open(const char *phc_device,
 		p->dispatch = p2p_dispatch;
 		p->event = p2p_event;
 		break;
-	case CLOCK_TYPE_E2E:
+	case CLOCK_TYPE_E2E: /* 设置port的分发回调函数和事件回调函数 */
 		p->dispatch = e2e_dispatch;
 		p->event = e2e_event;
 		break;
@@ -3176,7 +3179,7 @@ struct port *port_open(const char *phc_device,
 	p->tx_timestamp_offset <<= 16;
 	p->link_status = LINK_UP;
 	p->clock = clock;
-	p->trp = transport_create(cfg, transport);
+	p->trp = transport_create(cfg, transport); /* 创建传输对象 */
 	if (!p->trp) {
 		goto err_port;
 	}
@@ -3193,7 +3196,7 @@ struct port *port_open(const char *phc_device,
 	} else {
 		p->asCapable = NOT_CAPABLE;
 	}
-
+	/* 设置状态迁移回调函数 */
 	if (p->bmca == BMCA_NOOP && transport != TRANS_UDS) {
 		if (p->master_only) {
 			p->state_machine = designated_master_fsm;
@@ -3287,6 +3290,7 @@ enum port_state port_state(struct port *port)
 
 int port_state_update(struct port *p, enum fsm_event event, int mdiff)
 {
+	/* 端口状态更新 */
 	enum port_state next = p->state_machine(p->state, event, mdiff);
 
 	if (PS_FAULTY == next) {
@@ -3297,7 +3301,7 @@ int port_state_update(struct port *p, enum fsm_event event, int mdiff)
 			next = p->state_machine(next, EV_FAULT_CLEARED, 0);
 		}
 	}
-
+	/* 端口状态：初始化 */
 	if (PS_INITIALIZING == next) {
 		/*
 		 * This is a special case. Since we initialize the
@@ -3307,12 +3311,13 @@ int port_state_update(struct port *p, enum fsm_event event, int mdiff)
 		if (port_is_enabled(p)) {
 			port_disable(p);
 		}
-		if (port_initialize(p)) {
+		/* 端口初始化:读取端口属性、打开传输、创建时间定时器、创建netlink监听NIC link up/down */
+		if (port_initialize(p)) { 
 			event = EV_FAULT_DETECTED;
 		} else {
 			event = EV_INIT_COMPLETE;
 		}
-		next = p->state_machine(next, event, 0);
+		next = p->state_machine(next, event, 0); /* 将端口状态转移到EV_INIT_COMPLETE  */
 	}
 
 	if (next != p->state) {

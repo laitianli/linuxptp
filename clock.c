@@ -817,10 +817,11 @@ static int clock_add_port(struct clock *c, const char *phc_device,
 			  struct interface *iface)
 {
 	struct port *p, *piter, *lastp = NULL;
-
+	/* 创建poll fd数组 */
 	if (clock_resize_pollfd(c, c->nports + 1)) {
 		return -1;
 	}
+	/* 创建port对象*/
 	p = port_open(phc_device, phc_index, timestamping,
 		      ++c->last_port_number, iface, c);
 	if (!p) {
@@ -882,7 +883,7 @@ int clock_required_modes(struct clock *c)
 
 	return required_modes;
 }
-
+/* 创建时钟 */
 struct clock *clock_create(enum clock_type type, struct config *config,
 			   const char *phc_device)
 {
@@ -993,7 +994,7 @@ struct clock *clock_create(enum clock_type type, struct config *config,
 	required_modes = clock_required_modes(c);
 	STAILQ_FOREACH(iface, &config->interfaces, list) {
 		memset(ts_label, 0, sizeof(ts_label));
-		rtnl_get_ts_device(interface_name(iface), ts_label);
+		rtnl_get_ts_device(interface_name(iface), ts_label); /* 通过netlink，用于检查网卡的link up/down消息 */
 		interface_set_label(iface, ts_label);
 		interface_ensure_tslabel(iface);
 		interface_get_tsinfo(iface);
@@ -1197,7 +1198,7 @@ struct clock *clock_create(enum clock_type type, struct config *config,
 
 	/* Create the ports. */
 	STAILQ_FOREACH(iface, &config->interfaces, list) {
-		if (clock_add_port(c, phc_device, phc_index, timestamping, iface)) {
+		if (clock_add_port(c, phc_device, phc_index, timestamping, iface)) {	/* 创建port */
 			pr_err("failed to open port %s", interface_name(iface));
 			return NULL;
 		}
@@ -1552,7 +1553,8 @@ int clock_poll(struct clock *c)
 	struct pollfd *cur;
 	struct port *p;
 
-	clock_check_pollfd(c);
+	clock_check_pollfd(c);	/* 将port的fd填到c->pollfd数组中 */
+	/* 调用poll() API监听各个fd */
 	cnt = poll(c->pollfd, (c->nports + 1) * N_CLOCK_PFD, -1);
 	if (cnt < 0) {
 		if (EINTR == errno) {
@@ -1576,7 +1578,7 @@ int clock_poll(struct clock *c)
 					       port_number(p));
 					event = EV_FAULT_DETECTED;
 				} else {
-					event = port_event(p, i);
+					event = port_event(p, i); /* 事件处理 */
 				}
 				if (EV_STATE_DECISION_EVENT == event) {
 					c->sde = 1;
@@ -1587,7 +1589,7 @@ int clock_poll(struct clock *c)
 				if (EV_FAULT_DETECTED == event) {
 					c->sde = 1;
 				}
-				port_dispatch(p, event, 0);
+				port_dispatch(p, event, 0); /* 端口状态迁移 */
 				/* Clear any fault after a little while. */
 				if (PS_FAULTY == port_state(p)) {
 					clock_fault_timeout(p, 1);

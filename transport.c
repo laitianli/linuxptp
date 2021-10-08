@@ -106,13 +106,13 @@ struct transport *transport_create(struct config *cfg,
 	case TRANS_UDS:
 		t = uds_transport_create();
 		break;
-	case TRANS_UDP_IPV4:
+	case TRANS_UDP_IPV4:	/* 创建IPV4/UDP传输对象 */
 		t = udp_transport_create();
 		break;
-	case TRANS_UDP_IPV6:
+	case TRANS_UDP_IPV6: /* 创建IPV6/UDP传输对象 */
 		t = udp6_transport_create();
 		break;
-	case TRANS_IEEE_802_3:
+	case TRANS_IEEE_802_3:	/* 创建raw类型的传输对象 */
 		t = raw_transport_create();
 		break;
 	case TRANS_DEVICENET:

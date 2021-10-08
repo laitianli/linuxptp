@@ -26,6 +26,7 @@
 
 void e2e_dispatch(struct port *p, enum fsm_event event, int mdiff)
 {
+	/* 端口状态迁移 */
 	if (!port_state_update(p, event, mdiff)) {
 		return;
 	}
@@ -79,7 +80,7 @@ enum fsm_event e2e_event(struct port *p, int fd_index)
 	int cnt, fd = p->fda.fd[fd_index];
 	enum fsm_event event = EV_NONE;
 	struct ptp_message *msg, *dup;
-
+	/* 定时器及netlink的fd的处理 */
 	switch (fd_index) {
 	case FD_ANNOUNCE_TIMER:
 	case FD_SYNC_RX_TIMER:
@@ -121,7 +122,7 @@ enum fsm_event e2e_event(struct port *p, int fd_index)
 		pr_err("unexpected timer expiration");
 		return EV_NONE;
 
-	case FD_RTNL:
+	case FD_RTNL: /* 接收到Netlink消息状态，网卡up/down */
 		pr_debug("port %hu: received link status notification", portnum(p));
 		rtnl_link_status(fd, p->name, port_link_status, p);
 		if (p->link_status == (LINK_UP|LINK_STATE_CHANGED)) {
@@ -139,7 +140,7 @@ enum fsm_event e2e_event(struct port *p, int fd_index)
 		return EV_FAULT_DETECTED;
 	}
 	msg->hwts.type = p->timestamping;
-
+	/* 从服务端接收ptp数据 */
 	cnt = transport_recv(p->trp, fd, msg);
 	if (cnt <= 0) {
 		pr_err("port %hu: recv message failed", portnum(p));
@@ -164,9 +165,9 @@ enum fsm_event e2e_event(struct port *p, int fd_index)
 		msg_put(dup);
 		dup = NULL;
 	}
-
+	/* 解析消息头部，获取消息类型，并根据消息类型处理各个数据包 */
 	switch (msg_type(msg)) {
-	case SYNC:
+	case SYNC: /* sync消息处理 */
 		if (tc_fwd_sync(p, msg)) {
 			event = EV_FAULT_DETECTED;
 			break;
@@ -175,7 +176,7 @@ enum fsm_event e2e_event(struct port *p, int fd_index)
 			process_sync(p, dup);
 		}
 		break;
-	case DELAY_REQ:
+	case DELAY_REQ: /* Delay_req消息处理，当ptp4l做服务端才会处理 */
 		if (tc_fwd_request(p, msg)) {
 			event = EV_FAULT_DETECTED;
 		}
@@ -184,7 +185,7 @@ enum fsm_event e2e_event(struct port *p, int fd_index)
 		break;
 	case PDELAY_RESP:
 		break;
-	case FOLLOW_UP:
+	case FOLLOW_UP: /* Follow_up消息处理 */
 		if (tc_fwd_folup(p, msg)) {
 			event = EV_FAULT_DETECTED;
 			break;
@@ -193,7 +194,7 @@ enum fsm_event e2e_event(struct port *p, int fd_index)
 			process_follow_up(p, dup);
 		}
 		break;
-	case DELAY_RESP:
+	case DELAY_RESP: /* 处理Delay_resp消息 */
 		if (tc_fwd_response(p, msg)) {
 			event = EV_FAULT_DETECTED;
 		}

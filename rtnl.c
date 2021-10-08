@@ -91,16 +91,16 @@ int rtnl_get_ts_device(const char *device, char ts_device[IF_NAMESIZE])
 {
 	int err, fd;
 	int ts_index = -1;
-
+	/* 创建监听网卡link up/down消息的netlink */
 	fd = rtnl_open();
 	if (fd < 0)
 		return fd;
-
+	/* 查询网卡状态 */
 	err = rtnl_link_query(fd, device);
 	if (err) {
 		goto no_info;
 	}
-
+	/* 读取网卡状态 */
 	rtnl_link_status(fd, device, rtnl_get_ts_device_callback, &ts_index);
 	if (ts_index > 0 && if_indextoname(ts_index, ts_device))
 		err = 0;
